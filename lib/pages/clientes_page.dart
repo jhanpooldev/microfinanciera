@@ -1,148 +1,264 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:microfinanciera/pages/historial_clientes_page.dart';
+import '../services/firestore_service.dart';
 
 class ClientesPage extends StatefulWidget {
-  const ClientesPage({super.key});
-
   @override
-  State<ClientesPage> createState() => _ClientesPageState();
+  _ClientesPageState createState() => _ClientesPageState();
 }
 
 class _ClientesPageState extends State<ClientesPage> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nombreController = TextEditingController();
-  final TextEditingController _dniController = TextEditingController();
-  final TextEditingController _telefonoController = TextEditingController();
-  final TextEditingController _direccionController = TextEditingController();
 
-  final CollectionReference clientesRef =
-      FirebaseFirestore.instance.collection('clientes');
+  final _nombreCtrl = TextEditingController();
+  final _dniCtrl = TextEditingController();
+  final _telefonoCtrl = TextEditingController();
+  final _correoCtrl = TextEditingController();
+  final _direccionCtrl = TextEditingController();
 
-  Future<void> _registrarCliente() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        await clientesRef.add({
-          'nombre': _nombreController.text.trim(),
-          'dni': _dniController.text.trim(),
-          'telefono': _telefonoController.text.trim(),
-          'direccion': _direccionController.text.trim(),
-          'fecha_registro': Timestamp.now(),
-        });
+  String? _clienteId; // null → nuevo cliente, no null → editar cliente
 
+  /// Limpia los campos antes de registrar un nuevo cliente
+  void _limpiarCampos() {
+    _nombreCtrl.clear();
+    _dniCtrl.clear();
+    _telefonoCtrl.clear();
+    _correoCtrl.clear();
+    _direccionCtrl.clear();
+    _clienteId = null;
+  }
+
+  /// Abre el formulario (crear / editar cliente)
+  void _mostrarDialogoCliente({String? id, Map<String, dynamic>? data}) {
+    if (data != null) {
+      _clienteId = id;
+      _nombreCtrl.text = data['nombre'] ?? '';
+      _dniCtrl.text = data['dni'] ?? '';
+      _telefonoCtrl.text = data['telefono'] ?? '';
+      _correoCtrl.text = data['correo'] ?? '';
+      _direccionCtrl.text = data['direccion'] ?? '';
+    } else {
+      _limpiarCampos();
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(_clienteId == null ? 'Registrar Cliente' : 'Editar Cliente'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _nombreCtrl,
+                  decoration: const InputDecoration(labelText: 'Nombre completo'),
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Ingrese el nombre del cliente'
+                      : null,
+                ),
+                TextFormField(
+                  controller: _dniCtrl,
+                  decoration: const InputDecoration(labelText: 'DNI'),
+                  keyboardType: TextInputType.number,
+                  maxLength: 8,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Ingrese el DNI';
+                    if (v.length != 8) return 'El DNI debe tener 8 dígitos';
+                    if (int.tryParse(v) == null) return 'El DNI solo acepta números';
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: _telefonoCtrl,
+                  decoration: const InputDecoration(labelText: 'Teléfono'),
+                  keyboardType: TextInputType.phone,
+                  maxLength: 9,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Ingrese el teléfono';
+                    if (v.length != 9) return 'El teléfono debe tener 9 dígitos';
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: _correoCtrl,
+                  decoration: const InputDecoration(labelText: 'Correo electrónico'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Ingrese el correo';
+                    final emailReg = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                    if (!emailReg.hasMatch(v)) return 'Correo inválido';
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: _direccionCtrl,
+                  decoration: const InputDecoration(labelText: 'Dirección'),
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Ingrese la dirección'
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancelar'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            child: Text(_clienteId == null ? 'Guardar' : 'Actualizar'),
+            onPressed: _guardarCliente,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Guarda o actualiza cliente
+  Future<void> _guardarCliente() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final clienteData = {
+      'nombre': _nombreCtrl.text.trim(),
+      'dni': _dniCtrl.text.trim(),
+      'telefono': _telefonoCtrl.text.trim(),
+      'correo': _correoCtrl.text.trim(),
+      'direccion': _direccionCtrl.text.trim(),
+    };
+
+    try {
+      if (_clienteId == null) {
+        await _firestoreService.agregarCliente(clienteData);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cliente registrado correctamente')),
         );
-
-        _nombreController.clear();
-        _dniController.clear();
-        _telefonoController.clear();
-        _direccionController.clear();
-      } catch (e) {
+      } else {
+        await _firestoreService.actualizarCliente(_clienteId!, clienteData);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          const SnackBar(content: Text('Cliente actualizado correctamente')),
         );
       }
+
+      Navigator.pop(context);
+      _limpiarCampos();
+    } on Exception catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+      );
     }
   }
 
-  void _eliminarCliente(String id) async {
-    await clientesRef.doc(id).delete();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cliente eliminado')),
+  /// Confirmar eliminación
+  void _confirmarEliminar(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Eliminar Cliente'),
+        content:
+            const Text('¿Seguro que deseas eliminar este cliente permanentemente?'),
+        actions: [
+          TextButton(
+            child: const Text('Cancelar'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await _firestoreService.eliminarCliente(id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Cliente eliminado correctamente')),
+              );
+            },
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Clientes')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _nombreController,
-                    decoration: const InputDecoration(labelText: 'Nombre completo'),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Ingrese el nombre del cliente' : null,
-                  ),
-                  TextFormField(
-                    controller: _dniController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'DNI'),
-                    validator: (value) {
-                      if (value!.isEmpty) return 'Ingrese el DNI';
-                      if (value.length != 8) return 'El DNI debe tener 8 dígitos';
-                      return null;
-                    },
-                  ),
-                  TextFormField(
-                    controller: _telefonoController,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(labelText: 'Teléfono'),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Ingrese un número de teléfono' : null,
-                  ),
-                  TextFormField(
-                    controller: _direccionController,
-                    decoration: const InputDecoration(labelText: 'Dirección'),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Ingrese una dirección' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _registrarCliente,
-                    icon: const Icon(Icons.save),
-                    label: const Text('Registrar Cliente'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Lista de Clientes',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: clientesRef.orderBy('fecha_registro', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Text('Error al cargar los datos');
-                  }
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+      appBar: AppBar(title: const Text('Gestión de Clientes')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _firestoreService.obtenerClientes(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                  final clientes = snapshot.data!.docs;
+          final clientes = snapshot.data?.docs ?? [];
+          if (clientes.isEmpty) {
+            return const Center(child: Text('No hay clientes registrados.'));
+          }
 
-                  return ListView.builder(
-                    itemCount: clientes.length,
-                    itemBuilder: (context, index) {
-                      final cliente = clientes[index];
-                      return Card(
-                        child: ListTile(
-                          title: Text(cliente['nombre']),
-                          subtitle: Text(
-                              'DNI: ${cliente['dni']} | Tel: ${cliente['telefono']}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _eliminarCliente(cliente.id),
-                          ),
+          return ListView.builder(
+            itemCount: clientes.length,
+            itemBuilder: (context, index) {
+              final cliente = clientes[index].data() as Map<String, dynamic>;
+              final id = clientes[index].id;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: ListTile(
+                  title: Text(
+                    cliente['nombre'] ?? '',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('DNI: ${cliente['dni'] ?? ''}'),
+                      Text('Correo: ${cliente['correo'] ?? ''}'),
+                      Text('Teléfono: ${cliente['telefono'] ?? ''}'),
+                      Text('Dirección: ${cliente['direccion'] ?? ''}'),
+                      Text('Estado: ${cliente['estado'] ?? 'activo'}'),
+                      if (cliente['fechaRegistro'] != null)
+                        Text(
+                          'Registrado: ${DateTime.parse(cliente['fechaRegistro']).toLocal().toString().split(' ')[0]}',
                         ),
+                    ],
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HistorialClientePage(
+                          clienteId: cliente['id'],
+                          clienteNombre: cliente['nombre'],
+                        ),
+                       ),
                       );
+                     },
+
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'editar') {
+                        _mostrarDialogoCliente(id: id, data: cliente);
+                      } else if (value == 'eliminar') {
+                        _confirmarEliminar(id);
+                      }
                     },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'editar', child: Text('Editar')),
+                      PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _mostrarDialogoCliente(),
+        child: const Icon(Icons.add),
       ),
     );
   }

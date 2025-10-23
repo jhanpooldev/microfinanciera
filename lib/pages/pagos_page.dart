@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
+import 'package:intl/intl.dart';
 
 class PagosPage extends StatefulWidget {
   const PagosPage({super.key});
@@ -9,170 +11,219 @@ class PagosPage extends StatefulWidget {
 }
 
 class _PagosPageState extends State<PagosPage> {
+  final FirestoreService _firestoreService = FirestoreService();
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _idPrestamoController = TextEditingController();
-  final TextEditingController _montoController = TextEditingController();
-  final TextEditingController _fechaPagoController = TextEditingController();
 
-  final CollectionReference prestamosRef =
-      FirebaseFirestore.instance.collection('prestamos');
-  final CollectionReference pagosRef =
-      FirebaseFirestore.instance.collection('pagos');
+  String? _prestamoSeleccionado;
+  String? _clienteNombre;
+  double _montoPago = 0.0;
+  double _saldoRestante = 0.0;
+  String? _pagoId;
 
-  @override
-  void initState() {
-    super.initState();
-    _fechaPagoController.text = DateTime.now().toString().split(' ')[0];
-  }
-
-  Future<void> _registrarPago() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        final idPrestamo = _idPrestamoController.text.trim();
-        final montoPago = double.parse(_montoController.text);
-
-        // Buscar el préstamo
-        final prestamoSnap = await prestamosRef.doc(idPrestamo).get();
-
-        if (!prestamoSnap.exists) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('El préstamo no existe')),
-          );
-          return;
-        }
-
-        final prestamo = prestamoSnap.data() as Map<String, dynamic>;
-        final saldoPendiente = prestamo['saldo'] ?? prestamo['monto'];
-
-        if (montoPago > saldoPendiente) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('El monto supera el saldo pendiente')),
-          );
-          return;
-        }
-
-        // Registrar pago
-        await pagosRef.add({
-          'id_prestamo': idPrestamo,
-          'monto_pago': montoPago,
-          'fecha_pago': _fechaPagoController.text,
-          'fecha_registro': Timestamp.now(),
-        });
-
-        // Actualizar saldo del préstamo
-        final nuevoSaldo = saldoPendiente - montoPago;
-        await prestamosRef.doc(idPrestamo).update({
-          'saldo': nuevoSaldo,
-          'estado': nuevoSaldo <= 0 ? 'Pagado' : 'Activo',
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pago registrado correctamente')),
-        );
-
-        _idPrestamoController.clear();
-        _montoController.clear();
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+  // ==========================
+  // Mostrar diálogo de pago
+  // ==========================
+  void _mostrarDialogoPago({Map<String, dynamic>? pagoExistente}) {
+    if (pagoExistente != null) {
+      _pagoId = pagoExistente['id'];
+      _prestamoSeleccionado = pagoExistente['prestamoId'];
+      _clienteNombre = pagoExistente['clienteNombre'];
+      _montoPago = pagoExistente['monto'];
+      _saldoRestante = pagoExistente['saldoRestante'];
+    } else {
+      _pagoId = null;
+      _prestamoSeleccionado = null;
+      _clienteNombre = null;
+      _montoPago = 0.0;
+      _saldoRestante = 0.0;
     }
-  }
 
-  void _eliminarPago(String id) async {
-    await pagosRef.doc(id).delete();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pago eliminado')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pagos de Préstamos')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _idPrestamoController,
-                    decoration: const InputDecoration(
-                      labelText: 'ID del préstamo',
-                      hintText: 'Ejemplo: abc123xyz...',
-                    ),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Ingrese el ID del préstamo' : null,
-                  ),
-                  TextFormField(
-                    controller: _montoController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Monto del pago (S/)'),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Ingrese el monto' : null,
-                  ),
-                  TextFormField(
-                    controller: _fechaPagoController,
-                    readOnly: true,
-                    decoration: const InputDecoration(labelText: 'Fecha del pago'),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _registrarPago,
-                    icon: const Icon(Icons.payment),
-                    label: const Text('Registrar Pago'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Historial de Pagos',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: pagosRef.orderBy('fecha_registro', descending: true).snapshots(),
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(_pagoId == null ? 'Registrar Pago' : 'Editar Pago'),
+        content: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('prestamos').snapshots(),
                 builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Text('Error al cargar los pagos');
-                  }
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                  if (!snapshot.hasData) return const CircularProgressIndicator();
+                  final prestamos = snapshot.data!.docs;
 
-                  final pagos = snapshot.data!.docs;
-
-                  return ListView.builder(
-                    itemCount: pagos.length,
-                    itemBuilder: (context, index) {
-                      final pago = pagos[index];
-                      return Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.receipt_long, color: Colors.teal),
-                          title: Text(
-                            'Pago S/ ${pago['monto_pago']}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text('ID Préstamo: ${pago['id_prestamo']} | Fecha: ${pago['fecha_pago']}'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _eliminarPago(pago.id),
-                          ),
-                        ),
+                  return DropdownButtonFormField<String>(
+                    value: _prestamoSeleccionado,
+                    items: prestamos.map((p) {
+                      final data = p.data() as Map<String, dynamic>;
+                      final clienteNombre = data['clienteNombre'] ?? 'Desconocido';
+                      final monto = data['monto'] ?? 0.0;
+                      return DropdownMenuItem<String>(
+                        value: p.id,
+                        child: Text('$clienteNombre - S/${monto.toStringAsFixed(2)}'),
                       );
+                    }).toList(),
+                    onChanged: (v) async {
+                      setState(() {
+                        _prestamoSeleccionado = v;
+                      });
+
+                      // Obtener saldo restante actual del préstamo
+                      final doc = await FirebaseFirestore.instance
+                          .collection('prestamos')
+                          .doc(v)
+                          .get();
+
+                      if (doc.exists) {
+                        final data = doc.data()!;
+                        setState(() {
+                          _clienteNombre = data['clienteNombre'];
+                          _saldoRestante = (data['saldoRestante'] ?? data['totalPagar'] ?? 0).toDouble();
+                        });
+                      }
                     },
+                    validator: (v) => v == null ? 'Selecciona un préstamo válido' : null,
+                    decoration: const InputDecoration(labelText: 'Préstamo asociado'),
                   );
                 },
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextFormField(
+                initialValue: _montoPago > 0 ? _montoPago.toString() : '',
+                decoration: InputDecoration(
+                  labelText: 'Monto del pago (Saldo restante: S/${_saldoRestante.toStringAsFixed(2)})',
+                ),
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  final monto = double.tryParse(v ?? '');
+                  if (monto == null || monto <= 0) {
+                    return 'Monto inválido';
+                  }
+                  if (monto > _saldoRestante) {
+                    return 'El monto excede el saldo restante (S/${_saldoRestante.toStringAsFixed(2)})';
+                  }
+                  return null;
+                },
+                onSaved: (v) => _montoPago = double.parse(v!),
+              ),
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                _formKey.currentState!.save();
+
+                final nuevoSaldo = _saldoRestante - _montoPago;
+
+                final pagoData = {
+                  'prestamoId': _prestamoSeleccionado,
+                  'clienteNombre': _clienteNombre,
+                  'monto': _montoPago,
+                  'saldoRestante': nuevoSaldo,
+                  'fecha': DateTime.now().toIso8601String(),
+                };
+
+                try {
+                  if (_pagoId == null) {
+                    await _firestoreService.agregarPago(pagoData);
+                  } else {
+                    await _firestoreService.actualizarPago(_pagoId!, pagoData);
+                  }
+
+                  // 🔹 Actualiza saldo del préstamo
+                  await FirebaseFirestore.instance
+                      .collection('prestamos')
+                      .doc(_prestamoSeleccionado)
+                      .update({
+                    'saldoRestante': nuevoSaldo,
+                    'estado': nuevoSaldo <= 0 ? 'Pagado' : 'Activo',
+                  });
+
+                  if (mounted) Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================
+  // Eliminar pago
+  // ==========================
+  void _eliminarPago(String id) async {
+    await _firestoreService.eliminarPago(id);
+  }
+
+  // ==========================
+  // UI PRINCIPAL
+  // ==========================
+  @override
+  Widget build(BuildContext context) {
+    final formato = NumberFormat.currency(locale: 'es_PE', symbol: 'S/');
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pagos')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _firestoreService.obtenerPagos(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final pagos = snapshot.data!.docs;
+
+          if (pagos.isEmpty) {
+            return const Center(child: Text('No hay pagos registrados.'));
+          }
+
+          return ListView.builder(
+            itemCount: pagos.length,
+            itemBuilder: (context, index) {
+              final pago = pagos[index].data() as Map<String, dynamic>;
+              final fecha = DateTime.tryParse(pago['fecha'] ?? '');
+
+              return Card(
+                margin: const EdgeInsets.all(8),
+                child: ListTile(
+                  title: Text('Cliente: ${pago['clienteNombre'] ?? 'Desconocido'}'),
+                  subtitle: Text(
+                    'Monto: ${formato.format(pago['monto'] ?? 0)}\n'
+                    'Saldo restante: ${formato.format(pago['saldoRestante'] ?? 0)}\n'
+                    'Fecha: ${fecha != null ? DateFormat('dd/MM/yyyy').format(fecha) : 'Sin fecha'}',
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.orange),
+                        onPressed: () => _mostrarDialogoPago(pagoExistente: pago),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _eliminarPago(pago['id']),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _mostrarDialogoPago(),
+        child: const Icon(Icons.add),
       ),
     );
   }

@@ -1,19 +1,17 @@
-class Cliente {
+class Empleado {
   final String id;
   final String nombre;
-  final String dni;
-  final String telefono;
   final String correo;
-  final String direccion;
+  final String cargo; // Ejemplo: Administrador, Analista, Cajero, Invitado
+  final double sueldo;
   final DateTime fechaRegistro;
 
-  Cliente({
+  Empleado({
     required this.id,
     required this.nombre,
-    required this.dni,
-    required this.telefono,
     required this.correo,
-    required this.direccion,
+    required this.cargo,
+    required this.sueldo,
     required this.fechaRegistro,
   });
 
@@ -21,22 +19,20 @@ class Cliente {
     return {
       'id': id,
       'nombre': nombre,
-      'dni': dni,
-      'telefono': telefono,
       'correo': correo,
-      'direccion': direccion,
+      'cargo': cargo,
+      'sueldo': sueldo,
       'fechaRegistro': fechaRegistro.toIso8601String(),
     };
   }
 
-  factory Cliente.fromMap(Map<String, dynamic> map, String id) {
-    return Cliente(
+  factory Empleado.fromMap(Map<String, dynamic> map, String id) {
+    return Empleado(
       id: id,
       nombre: map['nombre'] ?? '',
-      dni: map['dni'] ?? '',
-      telefono: map['telefono'] ?? '',
       correo: map['correo'] ?? '',
-      direccion: map['direccion'] ?? '',
+      cargo: map['cargo'] ?? '',
+      sueldo: (map['sueldo'] ?? 0).toDouble(),
       fechaRegistro:
           DateTime.tryParse(map['fechaRegistro'] ?? '') ?? DateTime.now(),
     );

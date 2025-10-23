@@ -12,8 +12,8 @@ final Map<String, WidgetBuilder> appRoutes = {
   '/login': (context) => const LoginPage(),
   '/register': (context) => const RegisterPage(),
   '/home': (context) => const HomePage(),
-  '/clientes': (context) => const ClientesPage(),
-  '/prestamos': (context) => const PrestamosPage(),
+  '/clientes': (context) =>  ClientesPage(),
+  '/prestamos': (context) =>  PrestamosPage(),
   '/empleados': (context) => const EmpleadosPage(),
   '/pagos': (context) => const PagosPage(),
 };
