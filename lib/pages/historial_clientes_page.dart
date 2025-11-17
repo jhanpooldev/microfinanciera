@@ -171,7 +171,7 @@ class HistorialClientePage extends StatelessWidget {
                                   'Fecha: ${DateFormat('dd/MM/yyyy').format(DateTime.parse(data['fecha']))}',
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         );
                       },

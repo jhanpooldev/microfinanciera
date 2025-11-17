@@ -1,201 +1,141 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
-import '../services/firestore_service.dart';
+import '../services/auth_service.dart';
 
 class EmpleadosPage extends StatefulWidget {
-  final String userRole; // 'Administrador', 'Analista', etc.
-  const EmpleadosPage({super.key, this.userRole = 'Invitado'});
+  const EmpleadosPage({super.key});
 
   @override
   State<EmpleadosPage> createState() => _EmpleadosPageState();
 }
 
 class _EmpleadosPageState extends State<EmpleadosPage> {
-  final FirestoreService _firestoreService = FirestoreService();
-  final TextEditingController _nombreController = TextEditingController();
-  final TextEditingController _correoController = TextEditingController();
-  final TextEditingController _sueldoController = TextEditingController();
-  String _rolSeleccionado = 'Analista';
-  final List<String> roles = ['Administrador', 'Analista', 'Cajero', 'Invitado'];
-  String? _empleadoId; // para edición
   final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+  final _db = FirebaseFirestore.instance;
 
-  void _abrirFormulario({Map<String, dynamic>? data}) {
-    if (data != null) {
-      _empleadoId = data['id'];
-      _nombreController.text = data['nombre'];
-      _correoController.text = data['correo'];
-      _sueldoController.text = data['sueldo'].toString();
-      _rolSeleccionado = data['cargo'];
-    } else {
-      _empleadoId = null;
-      _nombreController.clear();
-      _correoController.clear();
-      _sueldoController.clear();
-      _rolSeleccionado = 'Analista';
-    }
+  String _email = '';
+  String _password = '';
+  String _rol = 'Analista';
+  bool _loading = false;
 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(_empleadoId == null ? 'Nuevo empleado' : 'Editar empleado'),
-        content: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _nombreController,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (v) => v == null || v.isEmpty ? 'Campo requerido' : null,
-                ),
-                TextFormField(
-                  controller: _correoController,
-                  decoration: const InputDecoration(labelText: 'Correo'),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Campo requerido';
-                    if (!v.contains('@')) return 'Correo inválido';
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: _sueldoController,
-                  decoration: const InputDecoration(labelText: 'Sueldo'),
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Campo requerido';
-                    final val = double.tryParse(v);
-                    if (val == null || val <= 0) return 'Sueldo inválido';
-                    return null;
-                  },
-                ),
-                DropdownButtonFormField<String>(
-                  value: _rolSeleccionado,
-                  decoration: const InputDecoration(labelText: 'Cargo'),
-                  items: roles.map((rol) {
-                    return DropdownMenuItem(value: rol, child: Text(rol));
-                  }).toList(),
-                  onChanged: (v) => setState(() => _rolSeleccionado = v!),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: _guardarEmpleado,
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-  }
+  final List<String> rolesDisponibles = [
+    'Analista',
+    'Cajero',
+    'Backoffice',
+  ];
 
-  Future<void> _guardarEmpleado() async {
+  Future<void> _crearEmpleado() async {
     if (!_formKey.currentState!.validate()) return;
-
-    final empleado = {
-      'nombre': _nombreController.text.trim(),
-      'correo': _correoController.text.trim(),
-      'cargo': _rolSeleccionado,
-      'sueldo': double.parse(_sueldoController.text.trim()),
-    };
+    _formKey.currentState!.save();
+    setState(() => _loading = true);
 
     try {
-      if (_empleadoId == null) {
-        if (widget.userRole != 'Administrador') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Solo un administrador puede crear empleados')),
-          );
-          return;
-        }
-        await _firestoreService.agregarEmpleado(empleado);
-      } else {
-        await _firestoreService.actualizarEmpleado(_empleadoId!, empleado);
-      }
-      Navigator.pop(context);
+      await _authService.registrarEmpleado(
+        _email,
+        _password,
+        _rol,
+        creadorUid: 'VRPWf7b16rPACvfhosQzX86P9hI2',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Empleado creado correctamente')),
+      );
+      _formKey.currentState!.reset();
+      _cargarEmpleados();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al crear empleado: $e')),
+      );
+    } finally {
+      setState(() => _loading = false);
     }
   }
 
-  Future<void> _eliminarEmpleado(String id) async {
-    if (widget.userRole != 'Administrador') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solo un administrador puede eliminar empleados')),
-      );
-      return;
-    }
+  List<Map<String, dynamic>> empleados = [];
 
-    await _firestoreService.eliminarEmpleado(id);
+  Future<void> _cargarEmpleados() async {
+    final snapshot = await _db.collection('empleados').get();
+    setState(() {
+      empleados = snapshot.docs.map((d) => d.data()).toList();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarEmpleados();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Gestión de empleados')),
-      floatingActionButton: widget.userRole == 'Administrador'
-          ? FloatingActionButton(
-              onPressed: () => _abrirFormulario(),
-              child: const Icon(Icons.add),
-            )
-          : null,
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestoreService.obtenerEmpleados(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Error al cargar empleados'));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final empleados = snapshot.data!.docs;
-
-          if (empleados.isEmpty) {
-            return const Center(child: Text('No hay empleados registrados'));
-          }
-
-          return ListView.builder(
-            itemCount: empleados.length,
-            itemBuilder: (context, i) {
-              final data = empleados[i].data() as Map<String, dynamic>;
-              return Card(
-                margin: const EdgeInsets.all(8),
-                child: ListTile(
-                  title: Text(data['nombre'] ?? ''),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Correo: ${data['correo'] ?? ''}'),
-                      Text('Cargo: ${data['cargo'] ?? ''}'),
-                      Text('Sueldo: S/${data['sueldo'] ?? 0}'),
-                    ],
+      appBar: AppBar(title: const Text('Gestión de Empleados')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text(
+              'Registrar Nuevo Empleado',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    decoration: const InputDecoration(labelText: 'Correo'),
+                    validator: (v) =>
+                        v == null || !v.contains('@') ? 'Correo inválido' : null,
+                    onSaved: (v) => _email = v!,
                   ),
-                  trailing: widget.userRole == 'Administrador'
-                      ? PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'editar') _abrirFormulario(data: data);
-                            if (value == 'eliminar') _eliminarEmpleado(data['id']);
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'editar', child: Text('Editar')),
-                            PopupMenuItem(value: 'eliminar', child: Text('Eliminar')),
-                          ],
-                        )
-                      : null,
-                ),
-              );
-            },
-          );
-        },
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    decoration: const InputDecoration(labelText: 'Contraseña'),
+                    obscureText: true,
+                    validator: (v) =>
+                        v == null || v.length < 6 ? 'Mínimo 6 caracteres' : null,
+                    onSaved: (v) => _password = v!,
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    value: _rol,
+                    items: rolesDisponibles
+                        .map((rol) => DropdownMenuItem(
+                              value: rol,
+                              child: Text(rol),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _rol = v!),
+                    decoration: const InputDecoration(labelText: 'Rol del Empleado'),
+                  ),
+                  const SizedBox(height: 20),
+                  _loading
+                      ? const CircularProgressIndicator()
+                      : ElevatedButton(
+                          onPressed: _crearEmpleado,
+                          child: const Text('Crear Empleado'),
+                        ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            const Divider(),
+            const Text(
+              'Empleados Registrados',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+            ...empleados.map((e) => Card(
+                  child: ListTile(
+                    title: Text(e['correo']),
+                    subtitle: Text('Rol: ${e['rol']}'),
+                    leading: const Icon(Icons.person),
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }
-
 }

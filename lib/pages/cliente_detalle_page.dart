@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/cliente_model.dart';
 
 class ClienteDetallePage extends StatelessWidget {
+  const ClienteDetallePage({super.key});
+
   @override
   Widget build(BuildContext context) {
     final Cliente cliente = ModalRoute.of(context)!.settings.arguments as Cliente;

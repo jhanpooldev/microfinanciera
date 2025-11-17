@@ -54,7 +54,7 @@ class _PagosPageState extends State<PagosPage> {
                   final prestamos = snapshot.data!.docs;
 
                   return DropdownButtonFormField<String>(
-                    value: _prestamoSeleccionado,
+                    initialValue: _prestamoSeleccionado,
                     items: prestamos.map((p) {
                       final data = p.data() as Map<String, dynamic>;
                       final clienteNombre = data['clienteNombre'] ?? 'Desconocido';

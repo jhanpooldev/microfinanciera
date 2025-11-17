@@ -4,6 +4,8 @@ import 'package:microfinanciera/pages/historial_clientes_page.dart';
 import '../services/firestore_service.dart';
 
 class ClientesPage extends StatefulWidget {
+  const ClientesPage({super.key});
+
   @override
   _ClientesPageState createState() => _ClientesPageState();
 }
@@ -111,8 +113,8 @@ class _ClientesPageState extends State<ClientesPage> {
             onPressed: () => Navigator.pop(context),
           ),
           ElevatedButton(
-            child: Text(_clienteId == null ? 'Guardar' : 'Actualizar'),
             onPressed: _guardarCliente,
+            child: Text(_clienteId == null ? 'Guardar' : 'Actualizar'),
           ),
         ],
       ),

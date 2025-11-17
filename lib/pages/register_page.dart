@@ -1,7 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../services/firestore_service.dart';
-
+import '../services/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -11,88 +9,83 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _firestoreService = FirestoreService();
   final _formKey = GlobalKey<FormState>();
-  String name = '';
-  String email = '';
-  String password = '';
+  final _authService = AuthService();
 
-  Future<void> _registerUser() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      try {
-        await _firestoreService.addUser({
-          'name': name,
-          'email': email,
-          'password': password,
-          'fechaRegistro': Timestamp.now(),
-        });
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _loading = false;
 
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _loading = true);
+
+    try {
+      final user = await _authService.registrarEmpleado(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+        'Usuario', // 🔒 siempre rol Usuario
+      );
+
+      if (user != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Usuario registrado correctamente')),
+          const SnackBar(content: Text('Registro exitoso')),
         );
         Navigator.pushReplacementNamed(context, '/login');
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al registrar usuario: $e')),
-        );
       }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Registro')),
+      appBar: AppBar(title: const Text('Registro de Usuario')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Nombre'),
-                onSaved: (v) => name = v!,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Ingresa tu nombre' : null,
-              ),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Correo'),
-                onSaved: (v) => email = v!,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Ingresa tu correo' : null,
-              ),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Contraseña'),
-                obscureText: true,
-                onSaved: (v) => password = v!,
-                validator: (v) =>
-                    v == null || v.length < 4 ? 'Mínimo 4 caracteres' : null,
-              ),
+              const Icon(Icons.person_add, size: 90, color: Colors.teal),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _registerUser,
-                child: const Text('Registrar'),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/login');
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: 'Correo electrónico'),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Ingrese su correo';
+                  if (!v.contains('@')) return 'Correo inválido';
+                  return null;
                 },
-                child: const Text('¿Ya tienes cuenta? Inicia sesión'),
               ),
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Contraseña'),
+                validator: (v) =>
+                    v == null || v.length < 6 ? 'Mínimo 6 caracteres' : null,
+              ),
+              const SizedBox(height: 25),
+              _loading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: _register,
+                      style: ElevatedButton.styleFrom(
+                        fixedSize: const Size(200, 45),
+                      ),
+                      child: const Text('Registrarme'),
+                    ),
             ],
           ),
         ),
       ),
     );
-  }
-}
-
-class FirestoreService {
-  // existing methods and properties
-
-  Future<void> addUser(Map<String, dynamic> userData) async {
-    await FirebaseFirestore.instance.collection('users').add(userData);
   }
 }

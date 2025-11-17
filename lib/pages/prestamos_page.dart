@@ -5,6 +5,8 @@ import '../services/firestore_service.dart';
 import 'historial_pagos_page.dart'; // 👈 nuevo import
 
 class PrestamosPage extends StatefulWidget {
+  const PrestamosPage({super.key});
+
   @override
   _PrestamosPageState createState() => _PrestamosPageState();
 }
@@ -72,7 +74,7 @@ class _PrestamosPageState extends State<PrestamosPage> {
                     }
 
                     return DropdownButtonFormField<String>(
-                      value: _clienteSeleccionado,
+                      initialValue: _clienteSeleccionado,
                       hint: const Text('Seleccionar Cliente'),
                       items: clientes.map((doc) {
                         final data = doc.data() as Map<String, dynamic>;
@@ -165,7 +167,7 @@ class _PrestamosPageState extends State<PrestamosPage> {
 
       // 🔹 Obtener nombre del cliente seleccionado
       final clienteDoc = await FirebaseFirestore.instance.collection('clientes').doc(clienteId).get();
-      final clienteData = clienteDoc.data() as Map<String, dynamic>?;
+      final clienteData = clienteDoc.data();
 
       final prestamoData = {
         'clienteId': clienteId,
@@ -237,13 +239,15 @@ class _PrestamosPageState extends State<PrestamosPage> {
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestoreService.obtenerPrestamos(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final prestamos = snapshot.data?.docs ?? [];
 
-          if (prestamos.isEmpty)
+          if (prestamos.isEmpty) {
             return const Center(child: Text('No hay préstamos registrados.'));
+          }
 
           return ListView.builder(
             itemCount: prestamos.length,
