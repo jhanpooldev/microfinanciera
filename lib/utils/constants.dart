@@ -1,3 +1,3 @@
 class Constants {
-  static const String appName = 'Confianza Microfinanciera';
+  static const String appName = 'FinAlora';
 }

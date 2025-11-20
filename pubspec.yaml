@@ -23,6 +23,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.3
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "logo.png"
+  min_sdk_android: 21 # importante
+
+# 👇 CONFIGURACIÓN DEL SPLASH (Pantalla de carga)
+flutter_native_splash:
+  color: "#009688" # Color Teal (el de tu app)
+  image: "logo.png"
+  android_12:
+    image: "logo.png"
+    color: "#009688"
 
 flutter:
   uses-material-design: true
