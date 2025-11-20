@@ -43,9 +43,21 @@ class _LoginPageState extends State<LoginPage> {
         
         if (rol == 'Gerente') {
           Navigator.pushReplacementNamed(context, '/gerente_home');
-        } else {
+        } 
+        // 👇 CAMBIO IMPORTANTE AQUÍ
+        else if (rol == 'Analista') { 
+          // Usamos la misma ruta '/home_asesor' pero para el rol Analista
+          Navigator.pushReplacementNamed(context, '/home_asesor'); 
+        } 
+        else if (rol == 'Cliente' || rol == 'Usuario') { 
+          Navigator.pushReplacementNamed(context, '/home_cliente');
+        }
+        else {
           Navigator.pushReplacementNamed(context, '/home');
         }
+      
+        // --- FIN DE LA LÓGICA ---
+
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

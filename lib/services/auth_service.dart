@@ -26,11 +26,13 @@ class AuthService {
     }
   }
 
-  /// 🔹 Registrar nuevo usuario (solo Gerente puede asignar roles especiales)
+  /// 🔹 Registrar nuevo usuario (Usuario/Cliente libre, otros roles restringidos)
   Future<User?> registrarEmpleado(String email, String password, String rol, {String? creadorUid}) async {
     try {
-      // Validar si quien intenta crear es el gerente
-      if (rol != 'Usuario' && creadorUid != 'VRPWf7b16rPACvfhosQzX86P9hI2') {
+      // 🛑 VALIDACIÓN DE ROLES
+      // Permitimos registro libre para 'Usuario' y 'Cliente'.
+      // Para roles administrativos (Gerente, Asesor, etc.), se requiere el ID del gerente (creadorUid).
+      if (rol != 'Usuario' && rol != 'Cliente' && creadorUid != 'VRPWf7b16rPACvfhosQzX86P9hI2') {
         throw Exception('Solo el gerente puede asignar roles especiales');
       }
 
@@ -42,21 +44,26 @@ class AuthService {
       final user = credential.user;
       if (user == null) throw Exception('Usuario no creado correctamente');
 
-      // Guardar datos del usuario en Firestore
+      // 🟢 DATOS INICIALES
+      // Si es Cliente, le damos un score inicial de 1000.
+      final int? scoreInicial = (rol == 'Cliente') ? 1000 : null;
+
+      // Guardar datos del usuario en Firestore (colección 'empleados' usada como 'usuarios')
       await _db.collection('empleados').doc(user.uid).set({
         'correo': email,
         'rol': rol,
         'fechaRegistro': FieldValue.serverTimestamp(),
         'creadoPor': creadorUid ?? user.uid,
+        'scoreCrediticio': scoreInicial, // 👈 Aquí se guarda el score inicial
       });
 
-      print('✅ Usuario $email registrado como $rol en Firestore');
+      print('✅ Usuario $email registrado como $rol en Firestore con score: $scoreInicial');
       return user;
     } on FirebaseAuthException catch (e) {
       print('❌ Error FirebaseAuth: ${e.code}');
       rethrow;
     } catch (e) {
-      print('🔥 Error general al registrar empleado: $e');
+      print('🔥 Error general al registrar usuario: $e');
       rethrow;
     }
   }

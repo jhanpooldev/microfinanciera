@@ -6,8 +6,10 @@ class Cliente {
   final String correo;
   final String direccion;
   final DateTime fechaRegistro;
+  final String? dniFotoUrl;
+  final int? scoreCrediticio;
 
-  Cliente({
+   Cliente({
     required this.id,
     required this.nombre,
     required this.dni,
@@ -15,6 +17,8 @@ class Cliente {
     required this.correo,
     required this.direccion,
     required this.fechaRegistro,
+    this.dniFotoUrl, 
+    this.scoreCrediticio,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class Cliente {
       'correo': correo,
       'direccion': direccion,
       'fechaRegistro': fechaRegistro.toIso8601String(),
+      'dniFotoUrl': dniFotoUrl, 
+      'scoreCrediticio': scoreCrediticio, 
     };
   }
 
@@ -39,6 +45,8 @@ class Cliente {
       direccion: map['direccion'] ?? '',
       fechaRegistro:
           DateTime.tryParse(map['fechaRegistro'] ?? '') ?? DateTime.now(),
+      dniFotoUrl: map['dniFotoUrl'],
+      scoreCrediticio: map['scoreCrediticio'],
     );
   }
 }

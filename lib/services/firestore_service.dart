@@ -48,14 +48,14 @@ class FirestoreService {
     await _db.collection('clientes').doc(id).delete();
   }
 
-    // 🔹 PRÉSTAMOS
+  // 🔹 PRÉSTAMOS
   Future<void> agregarPrestamo(Map<String, dynamic> prestamo) async {
     final String id = _uuid.v4();
     await _db.collection('prestamos').doc(id).set({
       'id': id,
       ...prestamo,
       'fecha': DateTime.now().toIso8601String(),
-      'estado': 'activo',
+      'estado': 'activo', // O 'Pendiente' si usas el flujo de aprobación
     });
   }
 
@@ -71,8 +71,7 @@ class FirestoreService {
     await _db.collection('prestamos').doc(id).delete();
   }
 
-
-     // 🔹 EMPLEADOS
+  // 🔹 EMPLEADOS
   Future<void> agregarEmpleado(Map<String, dynamic> empleado) async {
     final String id = _uuid.v4();
 
@@ -102,7 +101,7 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot> obtenerEmpleados() {
-    return _db.collection('empleados').orderBy('nombre').snapshots();
+    return _db.collection('empleados').orderBy('nombre').snapshots(); // Nota: Asegúrate que tus documentos tengan campo 'nombre' o cambia por 'correo'
   }
 
   Future<void> actualizarEmpleado(String id, Map<String, dynamic> empleado) async {
@@ -113,26 +112,71 @@ class FirestoreService {
     await _db.collection('empleados').doc(id).delete();
   }
 
-
-
-  // 🔹 PAGOS
+  // 🔹 PAGOS (CON LÓGICA DE PENALIZACIÓN)
   Future<void> agregarPago(Map<String, dynamic> pago) async {
     final String id = _uuid.v4();
 
+    // Validaciones de monto
     final double monto = double.tryParse(pago['monto'].toString()) ?? 0;
     final double saldoRestante = double.tryParse(pago['saldoRestante'].toString()) ?? 0;
 
     if (monto <= 0) {
       throw Exception('El monto debe ser mayor a 0');
     }
-    if (monto > saldoRestante) {
+    // Nota: A veces el saldo restante que viene del UI no está actualizado, 
+    // pero mantenemos la validación si confías en el dato entrante.
+    if (monto > saldoRestante) { 
       throw Exception('El monto no puede ser mayor al saldo restante');
     }
 
+    // 1. Obtener datos del préstamo para verificar fechas y cliente
+    final prestamoId = pago['prestamoId'];
+    final prestamoDoc = await _db.collection('prestamos').doc(prestamoId).get();
+    
+    if (!prestamoDoc.exists) {
+      throw Exception('El préstamo asociado no existe');
+    }
+
+    final prestamoData = prestamoDoc.data()!;
+
+    // 2. Calcular fecha límite aproximada
+    // Usamos 'fechaAprobacion' si existe (más exacto), sino 'fecha' (registro)
+    final String fechaBaseStr = prestamoData['fechaAprobacion'] ?? prestamoData['fecha'] ?? DateTime.now().toIso8601String();
+    final DateTime fechaInicio = DateTime.parse(fechaBaseStr);
+    final int plazoMeses = int.tryParse(prestamoData['plazoMeses']?.toString() ?? '1') ?? 1;
+
+    // Calculamos fecha límite (Fecha inicio + Plazo). 
+    // Se asume 30 días por mes para simplificar.
+    final fechaLimite = fechaInicio.add(Duration(days: 30 * plazoMeses));
+    final fechaPago = DateTime.now();
+    
+    bool esPagoTardio = fechaPago.isAfter(fechaLimite);
+
+    // 3. Lógica de Penalización en Score
+    if (esPagoTardio) {
+      final clienteUid = prestamoData['cliente']; // ID del usuario/cliente
+      if (clienteUid != null) {
+        // Bajamos 50 puntos por morosidad en la colección 'empleados'
+        // (donde guardamos a los usuarios registrados con Auth)
+        await _db.collection('empleados').doc(clienteUid).update({
+          'scoreCrediticio': FieldValue.increment(-50),
+        });
+        print('⚠️ Penalización aplicada al cliente $clienteUid por pago tardío');
+      }
+    } else {
+      // Opcional: Subir puntos por pago a tiempo
+      // final clienteUid = prestamoData['cliente'];
+      // await _db.collection('empleados').doc(clienteUid).update({
+      //   'scoreCrediticio': FieldValue.increment(10),
+      // });
+    }
+
+    // 4. Registrar el pago
     await _db.collection('pagos').doc(id).set({
       'id': id,
       ...pago,
-      'fecha': DateTime.now().toIso8601String(),
+      'fecha': fechaPago.toIso8601String(),
+      'pagadoTarde': esPagoTardio,
     });
   }
 

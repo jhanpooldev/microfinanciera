@@ -12,7 +12,12 @@
           "package_name": "com.example.microfinanciera"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "364600349841-70m50a4c1fms5halscfdgj6no7stu3a0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBZ-7qne-XHjeletepzptCqBIKS0fqX9FY"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "364600349841-70m50a4c1fms5halscfdgj6no7stu3a0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
